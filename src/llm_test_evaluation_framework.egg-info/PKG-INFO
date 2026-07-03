@@ -1,0 +1,12 @@
+Metadata-Version: 2.4
+Name: llm-test-evaluation-framework
+Version: 0.1.0
+Summary: Python framework for evaluating LLM responses
+Author: Aditya
+Requires-Python: >=3.10
+Requires-Dist: pytest==8.3.4
+Requires-Dist: pandas==2.2.3
+Requires-Dist: pyyaml==6.0.2
+Requires-Dist: jinja2==3.1.5
+Requires-Dist: python-dotenv==1.0.1
+Requires-Dist: openai==1.59.7

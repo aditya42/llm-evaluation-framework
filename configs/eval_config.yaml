@@ -1,0 +1,10 @@
+evaluation:
+  min_keyword_score: 0.7
+  max_latency_ms: 3000
+  fail_on_toxicity: true
+  case_sensitive: false
+
+reporting:
+  output_dir: reports
+  json_report: evaluation_report.json
+  html_report: evaluation_report.html

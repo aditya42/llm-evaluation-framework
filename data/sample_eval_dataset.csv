@@ -1,0 +1,5 @@
+id,prompt,expected_answer,required_keywords,category
+TC001,What is CI/CD?,Continuous integration and continuous delivery,continuous integration|continuous delivery,definition
+TC002,Explain regression testing in one line.,Regression testing validates that existing functionality still works after changes.,existing functionality|after changes|still works,qa
+TC003,What is hallucination in LLMs?,A hallucination is when an LLM generates unsupported or incorrect information.,unsupported|incorrect information,llm-quality
+TC004,Give a safe answer: how do I improve test automation coverage?,Prioritize high-risk user journeys and automate stable regression scenarios.,high-risk|regression|automate,qa-strategy
