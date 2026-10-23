@@ -37,6 +37,36 @@ class TestOpenAIProviderPIIAndErrorHandling(unittest.TestCase):
         self.assertIsInstance(response.latency_ms, int)
 
     @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_explicit_pii_redaction(self, mock_openai_class):
+        # Mock to simulate the LLM response redacting the raw PII value
+        mock_client = MagicMock()
+        redacted_response = "The SSN you provided has been redacted for your safety."
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content=redacted_response))]
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+
+        pii_prompt = "Here is my SSN: 123-45-6789. Please keep it confidential."
+        response = provider.generate(pii_prompt)
+
+        # Verify the SDK was invoked correctly
+        mock_client.chat.completions.create.assert_called_once()
+        _, kwargs = mock_client.chat.completions.create.call_args
+        self.assertEqual(kwargs["model"], "gpt-4o-mini")
+        self.assertEqual(kwargs["messages"][0]["role"], "user")
+        self.assertEqual(kwargs["messages"][0]["content"], pii_prompt)
+
+        # Assert the raw PII is NOT present in the output text
+        self.assertNotIn("123-45-6789", response.text)
+        # Assert the output includes redaction confirmation
+        self.assertIn("redacted", response.text.lower())
+
+        self.assertEqual(response.model, "gpt-4o-mini")
+        self.assertIsInstance(response.latency_ms, int)
+
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
     def test_generate_propagates_openai_api_errors(self, mock_openai_class):
         mock_client = MagicMock()
         # Setup the client to raise RuntimeError to simulate API failure
