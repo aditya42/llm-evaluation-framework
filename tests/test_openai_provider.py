@@ -97,5 +97,53 @@ class TestOpenAIProviderPIIAndErrorHandling(unittest.TestCase):
         self.assertEqual(response.text, "Empty prompt response")
         self.assertEqual(response.model, "gpt-4o-mini")
 
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_with_none_prompt_raises(self, mock_openai_class):
+        # Even if not explicitly validated, test SDK is called and handles None prompts or exception propagates
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = RuntimeError("Prompt cannot be None")
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+
+        with self.assertRaises(RuntimeError) as cm:
+            provider.generate(None)
+
+        self.assertEqual(str(cm.exception), "Prompt cannot be None")
+
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_with_non_string_prompt(self, mock_openai_class):
+        # Provide a non-string prompt (e.g. int) and assert that the error from client is propagated
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = TypeError("Prompt must be string")
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+
+        with self.assertRaises(TypeError) as cm:
+            provider.generate(12345)
+
+        self.assertEqual(str(cm.exception), "Prompt must be string")
+
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_with_very_long_prompt(self, mock_openai_class):
+        # Confirm that very long prompt strings are passed to SDK and return expected response
+        mock_client = MagicMock()
+        long_prompt = "A" * 10000  # 10k characters
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content="Long prompt response"))]
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+
+        response = provider.generate(long_prompt)
+
+        mock_client.chat.completions.create.assert_called_once()
+        _, kwargs = mock_client.chat.completions.create.call_args
+        self.assertEqual(kwargs["messages"][0]["content"], long_prompt)
+        self.assertEqual(response.text, "Long prompt response")
+        self.assertEqual(response.model, "gpt-4o-mini")
+
 if __name__ == "__main__":
     unittest.main()
