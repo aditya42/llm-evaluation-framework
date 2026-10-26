@@ -55,3 +55,30 @@ def test_mockprovider_repeated_calls_stability():
     outputs = [provider.generate(prompt).text for _ in range(5)]
     # All outputs must be identical
     assert all(output == outputs[0] for output in outputs)
+
+
+def test_mockprovider_regression_response_schema_consistency():
+    provider = MockProvider()
+    prompts = ["Example prompt 1", "Example prompt 2", "Example prompt 3"]
+
+    # Cache first responses for each prompt
+    baseline_responses = {}
+    for prompt in prompts:
+        resp = provider.generate(prompt)
+        baseline_responses[prompt] = resp
+        # Check schema and types on baseline
+        assert isinstance(resp.text, str), "Response.text must be string"
+        assert isinstance(resp.model, str), "Response.model must be string"
+        assert resp.model == "mock-provider", "Response.model must be 'mock-provider'"
+        assert isinstance(resp.latency_ms, int), "Response.latency_ms must be int"
+        assert resp.latency_ms >= 0, "Response.latency_ms must be non-negative"
+
+    # Repeat calls multiple times to assert strict deterministic consistency
+    for _ in range(10):
+        for prompt in prompts:
+            resp = provider.generate(prompt)
+            baseline = baseline_responses[prompt]
+            assert resp.text == baseline.text, f"Text mismatch for prompt '{prompt}'"
+            assert resp.model == baseline.model, f"Model mismatch for prompt '{prompt}'"
+            assert isinstance(resp.latency_ms, int) and resp.latency_ms >= 0, "Latency_ms must be non-negative int"
+            # latency_ms can vary but should never be negative or non-int
