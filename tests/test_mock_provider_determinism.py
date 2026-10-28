@@ -82,3 +82,29 @@ def test_mockprovider_regression_response_schema_consistency():
             assert resp.model == baseline.model, f"Model mismatch for prompt '{prompt}'"
             assert isinstance(resp.latency_ms, int) and resp.latency_ms >= 0, "Latency_ms must be non-negative int"
             # latency_ms can vary but should never be negative or non-int
+
+
+def test_mockprovider_deterministic_on_unknown_and_edge_prompts():
+    provider = MockProvider()
+    unknown_prompts = [""] * 2 + [" "] * 2 + ["1234567890"] * 2 + ["Special chars !@#$%^"] * 2
+    previous_results = {}
+
+    for prompt in unknown_prompts:
+        resp = provider.generate(prompt)
+        # Check schema and types
+        assert hasattr(resp, 'text') and isinstance(resp.text, str), "Response.text must exist and be a string"
+        assert hasattr(resp, 'model') and resp.model == "mock-provider", "Response.model must be 'mock-provider'"
+        assert hasattr(resp, 'latency_ms') and isinstance(resp.latency_ms, int) and resp.latency_ms >= 0, "latency_ms must be non-negative int"
+
+        # Comparing against previous if exists
+        if prompt in previous_results:
+            prev_resp = previous_results[prompt]
+            assert resp.text == prev_resp.text, f"Text outputs differ on repeated call for prompt: '{prompt}'"
+            assert resp.model == prev_resp.model, f"Model outputs differ on repeated call for prompt: '{prompt}'"
+        previous_results[prompt] = resp
+
+    # Also test latency_ms is always int and non-negative on repeat calls
+    for prompt in previous_results:
+        for _ in range(3):
+            resp = provider.generate(prompt)
+            assert isinstance(resp.latency_ms, int) and resp.latency_ms >= 0, "latency_ms must stay non-negative int on repeated call"
