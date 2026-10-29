@@ -145,5 +145,81 @@ class TestOpenAIProviderPIIAndErrorHandling(unittest.TestCase):
         self.assertEqual(response.text, "Long prompt response")
         self.assertEqual(response.model, "gpt-4o-mini")
 
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_with_multiple_pii_entities(self, mock_openai_class):
+        mock_client = MagicMock()
+        pii_prompt = "My SSN is 987-65-4321 and my phone is (555) 123-4567."
+        mock_response = MagicMock()
+        # Response redacts all PII
+        redacted_text = "Your sensitive information has been redacted."
+        mock_response.choices = [MagicMock(message=MagicMock(content=redacted_text))]
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+
+        response = provider.generate(pii_prompt)
+
+        mock_client.chat.completions.create.assert_called_once()
+        _, kwargs = mock_client.chat.completions.create.call_args
+        self.assertEqual(kwargs["messages"][0]["content"], pii_prompt)
+
+        # Assert no raw PII returned
+        self.assertNotIn("987-65-4321", response.text)
+        self.assertNotIn("555", response.text)
+        self.assertIn("redacted", response.text.lower())
+
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_handles_malformed_pii(self, mock_openai_class):
+        mock_client = MagicMock()
+        malformed_pii_prompt = "My SSN is 123-AB-####, and email is user(at)example(dot)com."
+        mock_response = MagicMock()
+        # The response should acknowledge malformed data and redact or sanitize
+        response_text = "The provided information has been sanitized for privacy."
+        mock_response.choices = [MagicMock(message=MagicMock(content=response_text))]
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+
+        response = provider.generate(malformed_pii_prompt)
+
+        self.assertNotIn("123-AB-####", response.text)
+        self.assertIn("sanitized", response.text.lower())
+
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_propagates_rate_limit_error(self, mock_openai_class):
+        mock_client = MagicMock()
+        # Simulate rate limit exception from the OpenAI API
+        class RateLimitError(Exception):
+            pass
+
+        mock_client.chat.completions.create.side_effect = RateLimitError("Rate limit exceeded")
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+
+        with self.assertRaises(RateLimitError) as cm:
+            provider.generate("Some prompt")
+
+        self.assertEqual(str(cm.exception), "Rate limit exceeded")
+
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_propagates_network_error(self, mock_openai_class):
+        mock_client = MagicMock()
+        # Simulate network connectivity error
+        class NetworkError(Exception):
+            pass
+
+        mock_client.chat.completions.create.side_effect = NetworkError("Network unreachable")
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+
+        with self.assertRaises(NetworkError) as cm:
+            provider.generate("Another prompt")
+
+        self.assertEqual(str(cm.exception), "Network unreachable")
+
 if __name__ == "__main__":
     unittest.main()
