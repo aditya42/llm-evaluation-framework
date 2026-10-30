@@ -108,3 +108,34 @@ def test_mockprovider_deterministic_on_unknown_and_edge_prompts():
         for _ in range(3):
             resp = provider.generate(prompt)
             assert isinstance(resp.latency_ms, int) and resp.latency_ms >= 0, "latency_ms must stay non-negative int on repeated call"
+
+
+def test_mockprovider_regression_output_schema_correctness():
+    """Regression test to verify output schema correctness and type constraints for MockProvider.generate."""
+    provider = MockProvider()
+    test_prompts = [
+        "Hello world",
+        "Edge case prompt",
+        "Another prompt to verify",
+        "Repeated prompt",
+        "",
+        "Some random test input with numbers 12345"
+    ]
+
+    for prompt in test_prompts:
+        resp = provider.generate(prompt)
+        # Check all expected attributes present
+        for attr in ('text', 'latency_ms', 'model'):
+            assert hasattr(resp, attr), f"Response missing attribute '{attr}'"
+
+        # Check 'text' type and non-empty string
+        assert isinstance(resp.text, str), "Response.text must be a string"
+        assert resp.text != '', "Response.text must not be empty"
+
+        # Check 'model' type and exact expected string
+        assert isinstance(resp.model, str), "Response.model must be a string"
+        assert resp.model == "mock-provider", "Response.model must be exactly 'mock-provider'"
+
+        # Check 'latency_ms' is int and non-negative
+        assert isinstance(resp.latency_ms, int), "Response.latency_ms must be an integer"
+        assert resp.latency_ms >= 0, "Response.latency_ms must be non-negative"
