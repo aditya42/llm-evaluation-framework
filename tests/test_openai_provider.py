@@ -221,5 +221,69 @@ class TestOpenAIProviderPIIAndErrorHandling(unittest.TestCase):
 
         self.assertEqual(str(cm.exception), "Network unreachable")
 
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_pii_redaction_does_not_echo_varied_pii(self, mock_openai_class):
+        # Test multiple varied PII inputs produce redacted outputs without any raw PII leakage
+        mock_client = MagicMock()
+
+        # Sample inputs containing varied PII
+        pii_prompts = [
+            "Credit card number: 4111 1111 1111 1111",
+            "My phone: +1-(234)-567-8901",
+            "Email: user@example.com",
+            "Passport Number: X1234567",
+            "DOB: 01/01/1990",
+        ]
+        redacted_response = "Your personal information has been securely redacted."
+
+        def side_effect(*args, **kwargs):
+            mock_resp = MagicMock()
+            mock_resp.choices = [MagicMock(message=MagicMock(content=redacted_response))]
+            return mock_resp
+
+        mock_client.chat.completions.create.side_effect = side_effect
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+
+        for prompt in pii_prompts:
+            response = provider.generate(prompt)
+            mock_client.chat.completions.create.assert_called()
+            # Assert no raw PII present in output response
+            for token in ['4111 1111 1111 1111', '+1-(234)-567-8901', 'user@example.com', 'X1234567', '01/01/1990']:
+                self.assertNotIn(token, response.text)
+            self.assertIn("redacted", response.text.lower())
+
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_error_recovery_on_api_failure(self, mock_openai_class):
+        # Simulate raising error on first call, then success on retry
+        mock_client = MagicMock()
+
+        error = RuntimeError("Temporary API failure")
+        responses = [
+            lambda *a, **k: (_ for _ in ()).throw(error),
+            lambda *a, **k: MagicMock(choices=[MagicMock(message=MagicMock(content="Recovered response"))])
+        ]
+        call_iter = iter(responses)
+
+        def side_effect(*args, **kwargs):
+            return next(call_iter)()
+
+        mock_client.chat.completions.create.side_effect = side_effect
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+
+        # First call raises
+        with self.assertRaises(RuntimeError):
+            provider.generate("Prompt with PII: 999-99-9999")
+
+        # Replace side effect to success for second call
+        mock_client.chat.completions.create.side_effect = lambda *a, **k: MagicMock(choices=[MagicMock(message=MagicMock(content="Safe response"))])
+
+        # Second call succeeds
+        response = provider.generate("Prompt with PII: 999-99-9999")
+        self.assertIn("Safe response", response.text)
+
 if __name__ == "__main__":
     unittest.main()
