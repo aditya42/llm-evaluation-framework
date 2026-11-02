@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import patch, MagicMock
+import pytest
 
 from llm_eval_framework.providers.openai_provider import OpenAIProvider
 
@@ -284,6 +285,56 @@ class TestOpenAIProviderPIIAndErrorHandling(unittest.TestCase):
         # Second call succeeds
         response = provider.generate("Prompt with PII: 999-99-9999")
         self.assertIn("Safe response", response.text)
+
+
+@patch("llm_eval_framework.providers.openai_provider.OpenAI")
+def test_regression_safe_handling_of_varied_pii_prompts(mock_openai_class):
+    """Regression test ensuring varied PII prompts produce redacted outputs without leaking raw PII."""
+    mock_client = MagicMock()
+    redacted_text = "Your personal information has been securely redacted."
+    
+    def side_effect(*args, **kwargs):
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock(message=MagicMock(content=redacted_text))]
+        return mock_resp
+
+    mock_client.chat.completions.create.side_effect = side_effect
+    mock_openai_class.return_value = mock_client
+
+    provider = OpenAIProvider(model="gpt-4o-mini")
+
+    pii_prompts = [
+        "Full Name: Jane Doe",
+        "Phone number: +1 800 555 0199",
+        "Email address: jane.doe@example.com",
+        "Credit Card: 4111 1111 1111 1111",
+        "SSN: 555-55-5555",
+        "Passport: A12345678",
+        "DOB: 12/31/1980",
+        "Address: 1234 Elm Street, Springfield",
+    ]
+
+    pii_tokens = [
+        "Jane Doe",
+        "+1 800 555 0199",
+        "jane.doe@example.com",
+        "4111 1111 1111 1111",
+        "555-55-5555",
+        "A12345678",
+        "12/31/1980",
+        "1234 Elm Street",
+    ]
+
+    for prompt, token in zip(pii_prompts, pii_tokens):
+        response = provider.generate(prompt)
+        mock_client.chat.completions.create.assert_called()
+        # Check the call argument to verify prompt sent
+        _, kwargs = mock_client.chat.completions.create.call_args
+        assert kwargs["messages"][0]["content"] == prompt
+        # Assert raw PII token not in output
+        assert token not in response.text
+        # Assert output indicates redaction or confidentiality
+        assert any(red_word in response.text.lower() for red_word in ["redacted", "confidential", "sanitized", "secure"])
 
 if __name__ == "__main__":
     unittest.main()
