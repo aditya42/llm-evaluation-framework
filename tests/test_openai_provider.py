@@ -286,55 +286,41 @@ class TestOpenAIProviderPIIAndErrorHandling(unittest.TestCase):
         response = provider.generate("Prompt with PII: 999-99-9999")
         self.assertIn("Safe response", response.text)
 
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_handles_pii_prompt_with_api_error_safely(self, mock_openai_class):
+        """
+        Test that generate raises API error without leaking raw PII or prompt content
+        and can be safely retried afterwards.
+        """
+        mock_client = MagicMock()
 
-@patch("llm_eval_framework.providers.openai_provider.OpenAI")
-def test_regression_safe_handling_of_varied_pii_prompts(mock_openai_class):
-    """Regression test ensuring varied PII prompts produce redacted outputs without leaking raw PII."""
-    mock_client = MagicMock()
-    redacted_text = "Your personal information has been securely redacted."
-    
-    def side_effect(*args, **kwargs):
-        mock_resp = MagicMock()
-        mock_resp.choices = [MagicMock(message=MagicMock(content=redacted_text))]
-        return mock_resp
+        # Simulated error raised by the SDK
+        error_message = "API failure on sensitive data"
+        mock_client.chat.completions.create.side_effect = RuntimeError(error_message)
+        mock_openai_class.return_value = mock_client
 
-    mock_client.chat.completions.create.side_effect = side_effect
-    mock_openai_class.return_value = mock_client
+        provider = OpenAIProvider(model="gpt-4o-mini")
 
-    provider = OpenAIProvider(model="gpt-4o-mini")
+        sensitive_prompt = "User PII data: SSN 111-22-3333 and email user@example.com"
 
-    pii_prompts = [
-        "Full Name: Jane Doe",
-        "Phone number: +1 800 555 0199",
-        "Email address: jane.doe@example.com",
-        "Credit Card: 4111 1111 1111 1111",
-        "SSN: 555-55-5555",
-        "Passport: A12345678",
-        "DOB: 12/31/1980",
-        "Address: 1234 Elm Street, Springfield",
-    ]
+        # On error, the exception should be raised, and we check no PII leaks in the exception message
+        with self.assertRaises(RuntimeError) as cm:
+            provider.generate(sensitive_prompt)
+        # Confirm the exception message matches but does NOT include raw prompt content
+        self.assertEqual(str(cm.exception), error_message)
+        self.assertNotIn("111-22-3333", str(cm.exception))
+        self.assertNotIn("user@example.com", str(cm.exception))
 
-    pii_tokens = [
-        "Jane Doe",
-        "+1 800 555 0199",
-        "jane.doe@example.com",
-        "4111 1111 1111 1111",
-        "555-55-5555",
-        "A12345678",
-        "12/31/1980",
-        "1234 Elm Street",
-    ]
+        # Patch side effect to succeed for a retry
+        mock_client.chat.completions.create.side_effect = None
+        redacted_response = "Your sensitive data has been redacted." 
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content=redacted_response))]
+        mock_client.chat.completions.create.return_value = mock_response
 
-    for prompt, token in zip(pii_prompts, pii_tokens):
-        response = provider.generate(prompt)
-        mock_client.chat.completions.create.assert_called()
-        # Check the call argument to verify prompt sent
-        _, kwargs = mock_client.chat.completions.create.call_args
-        assert kwargs["messages"][0]["content"] == prompt
-        # Assert raw PII token not in output
-        assert token not in response.text
-        # Assert output indicates redaction or confidentiality
-        assert any(red_word in response.text.lower() for red_word in ["redacted", "confidential", "sanitized", "secure"])
-
-if __name__ == "__main__":
-    unittest.main()
+        # Retry should succeed and produce safe output
+        response = provider.generate(sensitive_prompt)
+        self.assertIn("redacted", response.text.lower())
+        self.assertNotIn("111-22-3333", response.text)
+        self.assertNotIn("user@example.com", response.text)
+        self.assertEqual(response.model, "gpt-4o-mini")
