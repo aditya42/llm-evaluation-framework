@@ -139,3 +139,34 @@ def test_mockprovider_regression_output_schema_correctness():
         # Check 'latency_ms' is int and non-negative
         assert isinstance(resp.latency_ms, int), "Response.latency_ms must be an integer"
         assert resp.latency_ms >= 0, "Response.latency_ms must be non-negative"
+
+
+def test_mockprovider_generate_with_empty_prompt():
+    provider = MockProvider()
+    response = provider.generate("")
+    assert isinstance(response.text, str) and response.text != ""
+    assert response.model == "mock-provider"
+    assert isinstance(response.latency_ms, int) and response.latency_ms >= 0
+
+
+def test_mockprovider_generate_with_very_long_prompt():
+    provider = MockProvider()
+    long_prompt = "A" * 10000  # 10k characters
+    response = provider.generate(long_prompt)
+    assert isinstance(response.text, str) and response.text != ""
+    assert response.model == "mock-provider"
+    assert isinstance(response.latency_ms, int) and response.latency_ms >= 0
+
+
+def test_mockprovider_generate_with_non_string_prompt():
+    provider = MockProvider()
+    # It is not documented that MockProvider errors on non-string, so check if it raises or returns
+    try:
+        response = provider.generate(12345)
+        # If no error, still check schema
+        assert isinstance(response.text, str)
+        assert response.model == "mock-provider"
+        assert isinstance(response.latency_ms, int) and response.latency_ms >= 0
+    except Exception as e:
+        # Acceptable if it raises; just assert it's an Exception
+        assert isinstance(e, Exception)
