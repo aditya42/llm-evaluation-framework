@@ -170,3 +170,34 @@ def test_mockprovider_generate_with_non_string_prompt():
     except Exception as e:
         # Acceptable if it raises; just assert it's an Exception
         assert isinstance(e, Exception)
+
+
+def test_mockprovider_generate_response_strict_schema():
+    """Verify that MockProvider.generate() response strictly matches expected schema and constraints."""
+    provider = MockProvider()
+    prompts = [
+        "Simple prompt",
+        "Another test prompt",
+        "Edge case with special chars !@#$%^&*()",
+        "",
+        "1234567890",
+        "A" * 5000
+    ]
+
+    for prompt in prompts:
+        response = provider.generate(prompt)
+
+        # Assert presence of expected fields
+        assert hasattr(response, 'text'), "Response missing 'text' field"
+        assert hasattr(response, 'latency_ms'), "Response missing 'latency_ms' field"
+        assert hasattr(response, 'model'), "Response missing 'model' field"
+
+        # Assert field types
+        assert isinstance(response.text, str), "Response.text must be a string"
+        assert isinstance(response.latency_ms, int), "Response.latency_ms must be an integer"
+        assert isinstance(response.model, str), "Response.model must be a string"
+
+        # Assert field values
+        assert response.text != '', "Response.text must not be empty"
+        assert response.latency_ms >= 0, "Response.latency_ms must be non-negative"
+        assert response.model == 'mock-provider', "Response.model must always be 'mock-provider'"
