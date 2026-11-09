@@ -201,3 +201,44 @@ def test_mockprovider_generate_response_strict_schema():
         assert response.text != '', "Response.text must not be empty"
         assert response.latency_ms >= 0, "Response.latency_ms must be non-negative"
         assert response.model == 'mock-provider', "Response.model must always be 'mock-provider'"
+
+
+def test_mockprovider_generate_deterministic_schema_conformity():
+    """Test that MockProvider.generate returns deterministic, schema-conforming responses for diverse prompts."""
+    provider = MockProvider()
+    prompts = [
+        "Explain CI/CD",
+        "What is regression testing?",
+        "Describe hallucination in LLMs.",
+        "",  # empty prompt
+        "    ",  # whitespace prompt
+        "1234567890",
+        "Special characters !@#$%^"]
+
+    seen_responses = {}
+
+    for prompt in prompts:
+        response = provider.generate(prompt)
+
+        # Schema presence
+        assert hasattr(response, 'text'), "Missing 'text' field"
+        assert hasattr(response, 'latency_ms'), "Missing 'latency_ms' field"
+        assert hasattr(response, 'model'), "Missing 'model' field"
+
+        # Type checks
+        assert isinstance(response.text, str), "'text' must be string"
+        assert isinstance(response.latency_ms, int), "'latency_ms' must be int"
+        assert isinstance(response.model, str), "'model' must be string"
+
+        # Value constraints
+        assert response.text != '', "'text' must not be empty"
+        assert response.latency_ms >= 0, "'latency_ms' must be non-negative"
+        assert response.model == 'mock-provider', "'model' must be 'mock-provider'"
+
+        # Determinism: repeat generate and compare
+        response2 = provider.generate(prompt)
+        assert response2.text == response.text, "Deterministic 'text' failed"
+        assert response2.model == response.model, "Deterministic 'model' failed"
+        assert isinstance(response2.latency_ms, int) and response2.latency_ms >= 0, "Latency_ms is non-negative int"
+
+        seen_responses[prompt] = response.text
