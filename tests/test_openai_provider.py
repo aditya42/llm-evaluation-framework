@@ -324,3 +324,41 @@ class TestOpenAIProviderPIIAndErrorHandling(unittest.TestCase):
         self.assertNotIn("111-22-3333", response.text)
         self.assertNotIn("user@example.com", response.text)
         self.assertEqual(response.model, "gpt-4o-mini")
+
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_regression_no_raw_pii_echo(self, mock_openai_class):
+        """
+        Regression test to ensure that raw PII in prompt is never echoed verbatim in output.
+        This test mocks the client to simulate behavior that redacts or replaces PII,
+        and asserts that the exact raw PII strings from the prompt do not appear in the output.
+        """
+        mock_client = MagicMock()
+
+        pii_prompt = "Sensitive info: SSN 456-78-9012, phone (555) 987-6543, email testuser@example.org."
+        raw_pii_tokens = ["456-78-9012", "(555) 987-6543", "testuser@example.org"]
+
+        redacted_response_text = "Your sensitive information has been safely redacted to protect your privacy."
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content=redacted_response_text))]
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+
+        response = provider.generate(pii_prompt)
+
+        mock_client.chat.completions.create.assert_called_once()
+        _, kwargs = mock_client.chat.completions.create.call_args
+
+        # Ensure the prompt is passed correctly
+        self.assertEqual(kwargs["messages"][0]["content"], pii_prompt)
+
+        # Assert the output text does not contain any raw PII tokens exactly
+        for token in raw_pii_tokens:
+            self.assertNotIn(token, response.text)
+
+        # Assert the redaction confirmation is present
+        self.assertIn("redacted", response.text.lower() or "safely")
+        self.assertEqual(response.model, "gpt-4o-mini")
+        self.assertIsInstance(response.latency_ms, int)
