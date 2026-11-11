@@ -362,3 +362,68 @@ class TestOpenAIProviderPIIAndErrorHandling(unittest.TestCase):
         self.assertIn("redacted", response.text.lower() or "safely")
         self.assertEqual(response.model, "gpt-4o-mini")
         self.assertIsInstance(response.latency_ms, int)
+
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_with_whitespace_prompt(self, mock_openai_class):
+        # Test input with whitespace-only prompt
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content="Whitespace prompt response"))]
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+
+        response = provider.generate("   \t\n   ")
+
+        mock_client.chat.completions.create.assert_called_once()
+        self.assertEqual(response.text, "Whitespace prompt response")
+        self.assertEqual(response.model, "gpt-4o-mini")
+
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_with_list_prompt_raises(self, mock_openai_class):
+        # Providing a list instead of a string should propagate TypeError from client
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = TypeError("Prompt must be string")
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+
+        with self.assertRaises(TypeError) as cm:
+            provider.generate(["This", "is", "a", "list"])
+
+        self.assertEqual(str(cm.exception), "Prompt must be string")
+
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_with_dict_prompt_raises(self, mock_openai_class):
+        # Providing a dict instead of a string should propagate TypeError from client
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = TypeError("Prompt must be string")
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+
+        with self.assertRaises(TypeError) as cm:
+            provider.generate({"key": "value"})
+
+        self.assertEqual(str(cm.exception), "Prompt must be string")
+
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_with_unicode_prompt(self, mock_openai_class):
+        # Test that a unicode prompt is accepted and passed correctly
+        mock_client = MagicMock()
+        unicode_prompt = "Unicode test: \u2603 \u2764"
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content="Unicode response"))]
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+
+        response = provider.generate(unicode_prompt)
+
+        mock_client.chat.completions.create.assert_called_once()
+        _, kwargs = mock_client.chat.completions.create.call_args
+        self.assertEqual(kwargs["messages"][0]["content"], unicode_prompt)
+        self.assertEqual(response.text, "Unicode response")
+        self.assertEqual(response.model, "gpt-4o-mini")
