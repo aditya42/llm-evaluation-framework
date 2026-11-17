@@ -213,7 +213,7 @@ def test_mockprovider_generate_deterministic_schema_conformity():
         "",  # empty prompt
         "    ",  # whitespace prompt
         "1234567890",
-        "Special characters !@#$%^"]
+        "Special characters !@#$%^&*"]
 
     seen_responses = {}
 
@@ -242,3 +242,46 @@ def test_mockprovider_generate_deterministic_schema_conformity():
         assert isinstance(response2.latency_ms, int) and response2.latency_ms >= 0, "Latency_ms is non-negative int"
 
         seen_responses[prompt] = response.text
+
+
+def test_mockprovider_generate_boundary_prompts():
+    """Test deterministic output and schema validation for boundary and unusual unicode prompts."""
+    provider = MockProvider()
+
+    boundary_prompts = [
+        "",  # empty prompt
+        " ",  # single space
+        "\n",  # newline
+        "\t",  # tab
+        "𝄞𝄢𝄡𝄣",  # musical unicode glyphs
+        "😀😃😄😁😆😅😂🤣",  # emoji sequence
+        "A" * 10000,  # very long prompt (10k characters)
+        "ÀÁÂÃÄÅàáâãäå",  # accented latin characters
+        "F600603604",  # unicode emojis represented by codepoints
+        "特殊字符和表情 😊🚀"  # mixed language with emoji
+    ]
+
+    for prompt in boundary_prompts:
+        response1 = provider.generate(prompt)
+        response2 = provider.generate(prompt)
+
+        # Check presence of fields
+        assert hasattr(response1, 'text')
+        assert hasattr(response1, 'latency_ms')
+        assert hasattr(response1, 'model')
+
+        # Ensure types and constraints
+        assert isinstance(response1.text, str) and response1.text != '', "Response.text must be non-empty string"
+        assert isinstance(response1.latency_ms, int) and response1.latency_ms >= 0, "latency_ms must be non-negative int"
+        assert isinstance(response1.model, str) and response1.model == "mock-provider", "Invalid model string"
+
+        # Check deterministic text and model
+        assert response2.text == response1.text, f"Text differs on repeated call for prompt: {repr(prompt)}"
+        assert response2.model == response1.model, f"Model differs on repeated call for prompt: {repr(prompt)}"
+        # latency_ms can vary; just check type and non-negativity
+        assert isinstance(response2.latency_ms, int) and response2.latency_ms >= 0
+
+        # Also verify that latency_ms varies but remains valid on multiple calls
+        latencies = [provider.generate(prompt).latency_ms for _ in range(3)]
+        for lat in latencies:
+            assert isinstance(lat, int) and lat >= 0
