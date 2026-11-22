@@ -121,3 +121,45 @@ def test_generate_with_non_string_prompt_raises_type_error(mock_openai):
     with pytest.raises(TypeError) as exc_info:
         provider.generate(prompt)
     assert "Prompt must be a string" in str(exc_info.value)
+
+
+@patch("llm_eval_framework.providers.openai_provider.OpenAI")
+def test_generate_with_pii_containing_prompt(mock_openai):
+    # Simulate a prompt containing PII, e.g., an email and phone number
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "Response to PII prompt"
+    mock_client.chat.completions.create.return_value = mock_response
+
+    provider = OpenAIProvider()
+    prompt = "User email: user@example.com, phone: +1-202-555-0191"
+    response = provider.generate(prompt)
+
+    # Assert the client call uses the prompt as is
+    mock_client.chat.completions.create.assert_called_once()
+    call_kwargs = mock_client.chat.completions.create.call_args[1]
+    messages = call_kwargs["messages"]
+    assert messages[0]["content"] == prompt
+
+    # Assert response matches mocked
+    assert response.text == "Response to PII prompt"
+    assert response.model == provider.model
+    assert isinstance(response.latency_ms, int)
+
+
+@patch("llm_eval_framework.providers.openai_provider.OpenAI")
+def test_generate_error_recovery_propagation(mock_openai):
+    # Simulate an unexpected error during the API call to ensure proper error propagation
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    mock_client.chat.completions.create.side_effect = RuntimeError("Simulated API error for recovery test")
+
+    provider = OpenAIProvider()
+    prompt = "Test prompt for error recovery"
+
+    with pytest.raises(RuntimeError) as exc_info:
+        provider.generate(prompt)
+
+    assert "Simulated API error for recovery test" in str(exc_info.value)
