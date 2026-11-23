@@ -124,6 +124,34 @@ def test_generate_with_non_string_prompt_raises_type_error(mock_openai):
 
 
 @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+def test_generate_with_non_string_list_prompt_raises_type_error(mock_openai):
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    mock_client.chat.completions.create.side_effect = TypeError("Prompt must be a string")
+
+    provider = OpenAIProvider()
+    prompt = ["list", "not", "string"]
+
+    with pytest.raises(TypeError) as exc_info:
+        provider.generate(prompt)
+    assert "Prompt must be a string" in str(exc_info.value)
+
+
+@patch("llm_eval_framework.providers.openai_provider.OpenAI")
+def test_generate_with_non_string_dict_prompt_raises_type_error(mock_openai):
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    mock_client.chat.completions.create.side_effect = TypeError("Prompt must be a string")
+
+    provider = OpenAIProvider()
+    prompt = {"key": "value"}
+
+    with pytest.raises(TypeError) as exc_info:
+        provider.generate(prompt)
+    assert "Prompt must be a string" in str(exc_info.value)
+
+
+@patch("llm_eval_framework.providers.openai_provider.OpenAI")
 def test_generate_with_pii_containing_prompt(mock_openai):
     # Simulate a prompt containing PII, e.g., an email and phone number
     mock_client = MagicMock()
