@@ -61,6 +61,57 @@ class TestOpenAIProviderPIISafeguards(unittest.TestCase):
 
         self.assertEqual(response.text, "")
 
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_with_explicit_pii_in_prompt(self, mock_openai):
+        # Prompt contains explicit PII data
+        response_text = "Received your SSN securely. Thank you."
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content=response_text))]
+        )
+        mock_openai.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+        prompt = "My SSN is 123-45-6789. Please process securely."
+
+        response = provider.generate(prompt)
+
+        self.assertEqual(response.text, response_text)
+        self.assertIn("SSN", response.text)
+
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_with_malformed_prompt(self, mock_openai):
+        # Simulate handling of a malformed prompt (e.g., non-UTF8 characters)
+        response_text = "Error: Received malformed input."
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content=response_text))]
+        )
+        mock_openai.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+        prompt = "\udce2\udce2\udce2"  # Invalid Unicode surrogate
+
+        response = provider.generate(prompt)
+
+        self.assertEqual(response.text, response_text)
+        self.assertIn("Error", response.text)
+
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_api_raises_exception(self, mock_openai):
+        # Simulate API client throwing an exception (e.g., due to bad input or network error)
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = RuntimeError("API failure")
+        mock_openai.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+        prompt = "Prompt that causes API failure"
+
+        with self.assertRaises(RuntimeError) as context:
+            provider.generate(prompt)
+
+        self.assertIn("API failure", str(context.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
