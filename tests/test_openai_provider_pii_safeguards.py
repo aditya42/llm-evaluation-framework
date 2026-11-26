@@ -112,6 +112,24 @@ class TestOpenAIProviderPIISafeguards(unittest.TestCase):
 
         self.assertIn("API failure", str(context.exception))
 
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_with_api_redacted_pii_response(self, mock_openai):
+        # Simulate API response with PII redacted text
+        redacted_text = "[REDACTED PERSONAL INFORMATION]"
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content=redacted_text))]
+        )
+        mock_openai.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+        prompt = "Provide sensitive info."
+
+        response = provider.generate(prompt)
+
+        self.assertEqual(response.text, redacted_text)
+        self.assertTrue(response.text.startswith("[REDACTED"))
+
 
 if __name__ == "__main__":
     unittest.main()
