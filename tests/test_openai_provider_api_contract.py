@@ -73,9 +73,9 @@ def test_generate_with_empty_string_prompt(mock_openai):
 
 @patch("llm_eval_framework.providers.openai_provider.OpenAI")
 def test_generate_with_none_prompt_raises_type_error(mock_openai):
-    # Since the provider passes prompt to OpenAI SDK, passing None should raise a TypeError inside the SDK call
     mock_client = MagicMock()
     mock_openai.return_value = mock_client
+    # SDK raises TypeError if prompt is None
     mock_client.chat.completions.create.side_effect = TypeError("Prompt must be a string")
 
     provider = OpenAIProvider()
@@ -84,6 +84,22 @@ def test_generate_with_none_prompt_raises_type_error(mock_openai):
     with pytest.raises(TypeError) as exc_info:
         provider.generate(prompt)
     assert "Prompt must be a string" in str(exc_info.value)
+
+
+@patch("llm_eval_framework.providers.openai_provider.OpenAI")
+def test_generate_with_non_string_prompt_types_raise_type_error(mock_openai):
+    # Consolidated test for various non-string prompt types raising TypeError
+    non_string_prompts = [12345, ["list", "not", "string"], {"key": "value"}]
+
+    for prompt in non_string_prompts:
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_client.chat.completions.create.side_effect = TypeError("Prompt must be a string")
+        provider = OpenAIProvider()
+
+        with pytest.raises(TypeError) as exc_info:
+            provider.generate(prompt)
+        assert "Prompt must be a string" in str(exc_info.value)
 
 
 @patch("llm_eval_framework.providers.openai_provider.OpenAI")
@@ -97,7 +113,7 @@ def test_generate_with_very_large_prompt_passes(mock_openai):
     mock_client.chat.completions.create.return_value = mock_response
 
     provider = OpenAIProvider()
-    # Create a large prompt string (e.g., 100_000 characters)
+    # Create a large prompt string of 100,000 characters
     prompt = "a" * 100_000
     response = provider.generate(prompt)
 
@@ -106,49 +122,6 @@ def test_generate_with_very_large_prompt_passes(mock_openai):
     messages = call_kwargs["messages"]
     assert messages[0]["content"] == prompt
     assert response.text == "Large prompt response"
-
-
-@patch("llm_eval_framework.providers.openai_provider.OpenAI")
-def test_generate_with_non_string_prompt_raises_type_error(mock_openai):
-    # Passing a non-string prompt that is not None (e.g., int) should raise on the SDK call
-    mock_client = MagicMock()
-    mock_openai.return_value = mock_client
-    mock_client.chat.completions.create.side_effect = TypeError("Prompt must be a string")
-
-    provider = OpenAIProvider()
-    prompt = 12345
-
-    with pytest.raises(TypeError) as exc_info:
-        provider.generate(prompt)
-    assert "Prompt must be a string" in str(exc_info.value)
-
-
-@patch("llm_eval_framework.providers.openai_provider.OpenAI")
-def test_generate_with_non_string_list_prompt_raises_type_error(mock_openai):
-    mock_client = MagicMock()
-    mock_openai.return_value = mock_client
-    mock_client.chat.completions.create.side_effect = TypeError("Prompt must be a string")
-
-    provider = OpenAIProvider()
-    prompt = ["list", "not", "string"]
-
-    with pytest.raises(TypeError) as exc_info:
-        provider.generate(prompt)
-    assert "Prompt must be a string" in str(exc_info.value)
-
-
-@patch("llm_eval_framework.providers.openai_provider.OpenAI")
-def test_generate_with_non_string_dict_prompt_raises_type_error(mock_openai):
-    mock_client = MagicMock()
-    mock_openai.return_value = mock_client
-    mock_client.chat.completions.create.side_effect = TypeError("Prompt must be a string")
-
-    provider = OpenAIProvider()
-    prompt = {"key": "value"}
-
-    with pytest.raises(TypeError) as exc_info:
-        provider.generate(prompt)
-    assert "Prompt must be a string" in str(exc_info.value)
 
 
 @patch("llm_eval_framework.providers.openai_provider.OpenAI")
