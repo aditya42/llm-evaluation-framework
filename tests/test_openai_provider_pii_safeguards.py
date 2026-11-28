@@ -130,6 +130,35 @@ class TestOpenAIProviderPIISafeguards(unittest.TestCase):
         self.assertEqual(response.text, redacted_text)
         self.assertTrue(response.text.startswith("[REDACTED"))
 
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_handles_api_write_error_gracefully(self, mock_openai):
+        # Simulate API throwing a write error, check provider raises it transparently
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = RuntimeError("Write error: connection reset")
+        mock_openai.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+        prompt = "Test prompt causing write error"
+
+        with self.assertRaises(RuntimeError) as context:
+            provider.generate(prompt)
+
+        self.assertIn("Write error", str(context.exception))
+
+    @patch("llm_eval_framework.providers.openai_provider.OpenAI")
+    def test_generate_handles_api_invalid_request_error(self, mock_openai):
+        # Simulate API rejecting request due to invalid input
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = RuntimeError("Invalid request: malformed prompt")
+        mock_openai.return_value = mock_client
+
+        provider = OpenAIProvider(model="gpt-4o-mini")
+        prompt = "Malformed prompt data"
+
+        with self.assertRaises(RuntimeError) as context:
+            provider.generate(prompt)
+
+        self.assertIn("Invalid request", str(context.exception))
 
 if __name__ == "__main__":
     unittest.main()
